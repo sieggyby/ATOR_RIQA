@@ -1,0 +1,33 @@
+# RIQA Global Settings
+
+database:
+  path: "riqa/data/riqa.db"
+
+scanner:
+  default_profile: "creality_ferret_se"
+  warmup_minutes: 30
+  calibration_validity_hours: 8
+
+alignment:
+  hard_block_fitness: 0.70
+  hard_block_rmse_mm: 0.15
+  default_recipe_fitness: 0.85
+  icp_max_iterations: 50
+  icp_convergence_threshold: 1.0e-7
+  icp_downsample_voxel_mm: 0.3
+
+fusion:
+  default_scan_count: 3
+
+uncertainty:
+  coverage_factor_k: 2  # 95% CI
+
+guard_band:
+  default_method: "uncertainty_based"
+  default_simple_percent: 10.0
+
+paths:
+  cad_directory: "cad_files/"
+  scan_directory: "scans/"
+  report_directory: "reports/"
+  archive_directory: "archive/"

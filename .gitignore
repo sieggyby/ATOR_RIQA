@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data (generated at runtime)
+riqa/data/*.db
+scans/
+cad_files/
+reports/*.pdf
+archive/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env

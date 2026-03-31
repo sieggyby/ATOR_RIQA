@@ -1,0 +1,32 @@
+# Creality Ferret SE — Consumer-class structured light scanner
+# Phase 0-1 only. Class B predominantly. See spec Principle 0.
+
+scanner_class: "consumer"
+model: "Creality Ferret SE"
+accuracy_class_mm: 0.1
+warmup_minutes: 30
+
+# Adjustments (on top of base thresholds per spec Section 7.8)
+sor_sigma_adjustment: 0.5
+cad_proximity_adjustment_mm: 1.0
+fusion_voxel_size_mm: 0.25
+min_feature_size_class_a_mm: 5.0  # 0.200"
+
+# Part-type base thresholds
+part_types:
+  machined_metal:
+    sor_std_ratio: 2.5    # base 2.0 + 0.5 consumer adjustment
+    cad_proximity_mm: 2.5  # base 1.5 + 1.0 consumer adjustment
+    consensus_threshold: "ceil(N/2)"
+  injection_molded:
+    sor_std_ratio: 2.5
+    cad_proximity_mm: 2.5
+    consensus_threshold: "ceil(N/2)"
+  fdm_printed:
+    sor_std_ratio: 3.0    # base 2.5 + 0.5
+    cad_proximity_mm: 3.0  # base 2.0 + 1.0
+    consensus_threshold: "ceil(N/2)"
+  sla_printed:
+    sor_std_ratio: 2.5
+    cad_proximity_mm: 2.5
+    consensus_threshold: "ceil(N/2)"
