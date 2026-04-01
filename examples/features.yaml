@@ -1,0 +1,31 @@
+# Example feature definitions for Phase 0 testing
+# All features will be assigned Class B (review-only) automatically
+
+features:
+  - name: "Bore D1"
+    feature_type: diameter
+    nominal: 25.4
+    tol_plus: 0.1
+    tol_minus: -0.1
+    bbox_min: [10.0, 10.0, 0.0]
+    bbox_max: [40.0, 40.0, 20.0]
+    axis: [0, 0, 1]
+    margin_mm: 5.0
+
+  - name: "Overall Length"
+    feature_type: bbox_length
+    nominal: 100.0
+    tol_plus: 0.5
+    tol_minus: -0.5
+    bbox_min: [0.0, 0.0, 0.0]
+    bbox_max: [100.0, 50.0, 30.0]
+    margin_mm: 2.0
+
+  - name: "Top Face Flatness"
+    feature_type: flatness
+    nominal: 0.0
+    tol_plus: 0.05
+    tol_minus: 0.0
+    bbox_min: [5.0, 5.0, 29.0]
+    bbox_max: [95.0, 45.0, 31.0]
+    margin_mm: 2.0
