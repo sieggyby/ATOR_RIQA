@@ -226,10 +226,18 @@ def inspect(ply_files, step, part_number, features_yaml, operator, ambient_temp_
         alignment_reason = None
         all_perturbation_values = []
 
+        # Load alignment params from settings
+        settings = _load_settings()
+        align_cfg = settings.get("alignment", {})
+
         for i, pp in enumerate(preprocessed):
             result = align(
                 pp.pcd_downsampled, cad_pcd,
-                max_iterations=50,
+                max_iterations=align_cfg.get("icp_max_iterations", 50),
+                convergence_threshold=align_cfg.get("icp_convergence_threshold", 1e-7),
+                hard_block_fitness=align_cfg.get("hard_block_fitness", 0.70),
+                hard_block_rmse=align_cfg.get("hard_block_rmse_mm", 0.15),
+                unconstrained_fitness_threshold=align_cfg.get("default_recipe_fitness", 0.85),
             )
             click.echo(f"  Scan {i+1}: fitness={result.fitness:.3f}, RMSE={result.rmse:.4f}mm, "
                        f"band={result.alignment_band}")

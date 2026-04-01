@@ -277,20 +277,29 @@ def stability_test(
         # Perturbed initial transform
         T_init = T_perturb @ base_transform
 
-        # Re-run ICP from perturbed pose
+        # Re-run two-pass ICP from perturbed pose (must match main pipeline)
         criteria = o3d.pipelines.registration.ICPConvergenceCriteria(
             max_iteration=max_iterations,
             relative_fitness=convergence_threshold,
             relative_rmse=convergence_threshold,
         )
-        reg = o3d.pipelines.registration.registration_icp(
+        # Pass 1: broad capture
+        reg1 = o3d.pipelines.registration.registration_icp(
             scan_pcd, cad_pcd,
-            max_correspondence_distance=0.5,
+            max_correspondence_distance=2.0,
             init=T_init,
             estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPlane(),
             criteria=criteria,
         )
-        rmse_values.append(reg.inlier_rmse)
+        # Pass 2: fine refinement
+        reg2 = o3d.pipelines.registration.registration_icp(
+            scan_pcd, cad_pcd,
+            max_correspondence_distance=0.5,
+            init=reg1.transformation,
+            estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPlane(),
+            criteria=criteria,
+        )
+        rmse_values.append(reg2.inlier_rmse)
 
     if not rmse_values:
         return False, []
@@ -360,6 +369,7 @@ def align(
     convergence_threshold: float = 1e-7,
     hard_block_fitness: float = 0.70,
     hard_block_rmse: float = 0.15,
+    unconstrained_fitness_threshold: float = 0.80,
 ) -> AlignmentResult:
     """Full 3-stage alignment pipeline.
 
@@ -401,6 +411,7 @@ def align(
         is_unconstrained=True,  # PHASE0_SIMPLIFICATION: always unconstrained
         hard_block_fitness=hard_block_fitness,
         hard_block_rmse=hard_block_rmse,
+        unconstrained_fitness_threshold=unconstrained_fitness_threshold,
     )
 
     # If hard-blocked, aligned_pcd is None — prevents downstream measurement
