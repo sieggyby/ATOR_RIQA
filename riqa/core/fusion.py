@@ -43,14 +43,23 @@ def fuse_scans(
     Returns:
         FusionResult with fused cloud and metadata.
     """
-    import open3d as o3d
-
     n_scans = len(aligned_pcds)
     if n_scans == 0:
         raise ValueError("No point clouds to fuse.")
 
     # Consensus threshold: ceil(N/2)
-    consensus = min_scans if min_scans is not None else math.ceil(n_scans / 2)
+    default_consensus = math.ceil(n_scans / 2)
+    if min_scans is not None:
+        if min_scans < default_consensus:
+            raise ValueError(
+                f"min_scans ({min_scans}) cannot be less than ceil(N/2) = {default_consensus}. "
+                f"Lowering consensus below majority would allow phantom points from noisy scans."
+            )
+        consensus = min_scans
+    else:
+        consensus = default_consensus
+
+    import open3d as o3d
 
     # Collect all points with scan index
     all_points = []

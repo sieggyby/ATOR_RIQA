@@ -188,3 +188,16 @@ class TestFusionConsensus:
         assert math.ceil(5 / 2) == 3
         # N=1: ceil(1/2) = 1
         assert math.ceil(1 / 2) == 1
+
+    def test_min_scans_below_consensus_raises(self):
+        """min_scans below ceil(N/2) must be rejected to prevent phantom points."""
+        from riqa.core.fusion import fuse_scans
+
+        # Create 4 mock point clouds — consensus should be ceil(4/2)=2
+        # Passing min_scans=1 should raise ValueError
+        class FakePcd:
+            def __init__(self, pts):
+                self.points = pts
+        pcds = [FakePcd(np.array([[0, 0, 0]])) for _ in range(4)]
+        with pytest.raises(ValueError, match="cannot be less than"):
+            fuse_scans(pcds, min_scans=1)

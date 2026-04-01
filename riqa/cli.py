@@ -155,6 +155,9 @@ def inspect(ply_files, step, part_number, features_yaml, operator, ambient_temp_
         # --- Step 1: Create Part record ---
         part_id = dbmod.insert_part(
             db, part_number=part_number, revision=part_revision,
+            description=None,  # Phase 0: no description
+            cad_file_path=str(step),
+            cad_hash=None,  # Will be set after CAD load
             material_type=material_type,
         )
 
@@ -164,11 +167,23 @@ def inspect(ply_files, step, part_number, features_yaml, operator, ambient_temp_
         # --- Step 3: Check calibration ---
         calibration_valid, cal_run_id = check_calibration_valid(db)
         if not calibration_valid:
-            click.echo("WARNING: Calibration is expired or missing. Results will be BLOCKED.", err=True)
+            click.echo("ERROR: Calibration is expired or missing. Inspection blocked.", err=True)
+            click.echo("Run 'riqa calibrate' before inspecting.", err=True)
+            sys.exit(1)
 
         # --- Step 4: Create inspection record ---
+        delta_t = abs(ambient_temp_c - 20.0)
         env_id = dbmod.insert_environment_snapshot(
-            db, ambient_temp_c=ambient_temp_c,
+            db,
+            inspection_id=None,  # linked via inspection record
+            calibration_run_id=cal_run_id,
+            ambient_temp_c=ambient_temp_c,
+            warmup_elapsed_minutes=0.0,  # PHASE0_SIMPLIFICATION
+            cte_material=material_type,
+            cte_value=23.6e-6,  # aluminum 6061-T6 default
+            cte_source="handbook",  # PHASE0_SIMPLIFICATION
+            delta_t_from_20c=delta_t,
+            recorded_by=operator,
         )
 
         inspection_id = dbmod.insert_inspection(
@@ -270,7 +285,7 @@ def inspect(ply_files, step, part_number, features_yaml, operator, ambient_temp_
         if alignment_band == "hard_block":
             click.echo("ALIGNMENT HARD-BLOCKED. Persisting blocked results for all features.")
             for feat, fid in zip(features, feature_ids):
-                dbmod.insert_inspection_result(
+                result_id = dbmod.insert_inspection_result(
                     db, inspection_id=inspection_id, feature_id=fid,
                     raw_value=None, corrected_value=None,
                     expanded_uncertainty=None, deviation=None,
@@ -278,13 +293,21 @@ def inspect(ply_files, step, part_number, features_yaml, operator, ambient_temp_
                     reason_code="REVIEW_ONLY_ALIGNMENT_DEGRADED",
                     recommended_action="Alignment failed — rescan or check part orientation.",
                 )
+                # H-2: Every InspectionResult needs linked MeasurementEvidence
+                dbmod.insert_measurement_evidence(
+                    db, result_id=result_id,
+                    local_coverage=0.0, local_density=0.0,
+                    fit_residual=0.0, inlier_count=0, effective_sample_size=0,
+                    u_fit=0.0, u_repeat=0.0, u_reprod=0.0, u_align=0.0,
+                    u_cal=0.0, u_ref=0.0, u_temp=0.0, u_bias_est=0.0,
+                    u_combined=0.0, expanded_uncertainty=0.0,
+                )
             dbmod.update_inspection_disposition(db, inspection_id, "incomplete")
             _print_results_table(features, ["blocked"] * len(features))
             return
 
         # --- Step 10: Post-alignment CAD-proximity filter ---
         click.echo("Applying CAD-proximity filter...")
-        import trimesh
         cad_mesh = o3d.geometry.TriangleMesh()
         cad_mesh.vertices = o3d.utility.Vector3dVector(cad_model.vertices)
         cad_mesh.triangles = o3d.utility.Vector3iVector(cad_model.faces)
@@ -305,7 +328,6 @@ def inspect(ply_files, step, part_number, features_yaml, operator, ambient_temp_
         results_statuses = []
 
         # Pre-compute shared values for uncertainty
-        delta_t = abs(ambient_temp_c - 20.0)
         cte = 23.6e-6  # aluminum 6061-T6 default, overridable in future
         part_size = float(np.max(cad_model.bbox_size_mm))
 
@@ -328,13 +350,22 @@ def inspect(ply_files, step, part_number, features_yaml, operator, ambient_temp_
 
                 if n_local < 10:
                     click.echo(f"    Too few local points ({n_local}), marking as manual_required")
-                    dbmod.insert_inspection_result(
+                    result_id = dbmod.insert_inspection_result(
                         db, inspection_id=inspection_id, feature_id=fid,
                         raw_value=None, corrected_value=None,
                         expanded_uncertainty=None, deviation=None,
                         status="manual_required",
                         reason_code="MANUAL_FEATURE_TOO_SMALL",
                         recommended_action="Not enough points in feature region.",
+                    )
+                    # H-5: Every InspectionResult needs linked evidence
+                    dbmod.insert_measurement_evidence(
+                        db, result_id=result_id,
+                        local_coverage=0.0, local_density=0.0,
+                        fit_residual=0.0, inlier_count=n_local, effective_sample_size=n_local,
+                        u_fit=0.0, u_repeat=0.0, u_reprod=0.0, u_align=0.0,
+                        u_cal=0.0, u_ref=0.0, u_temp=0.0, u_bias_est=0.0,
+                        u_combined=0.0, expanded_uncertainty=0.0,
                     )
                     results_statuses.append("manual_required")
                     continue
@@ -378,9 +409,10 @@ def inspect(ply_files, step, part_number, features_yaml, operator, ambient_temp_
                 u_reprod = compute_u_reprod_phase0(profile.accuracy_class_mm)
                 u_align = compute_u_align(all_perturbation_values) if all_perturbation_values else 0.01
                 u_cal_val = 0.005  # Phase 0 default
-                latest_cal = db.get_latest_calibration_run()
+                latest_cal = dbmod.get_latest_calibration(db, profile.model)
                 if latest_cal:
-                    u_cal_val = compute_u_cal(latest_cal["error"], latest_cal["certified_uncertainty"])
+                    cal_error = abs(latest_cal["measured_value"] - latest_cal["artifact_certified_value"])
+                    u_cal_val = compute_u_cal(cal_error, latest_cal["artifact_cert_uncertainty"])
                 u_ref = compute_u_ref_phase0()
                 u_temp = compute_u_temp(cte, part_size, delta_t)
 
@@ -473,13 +505,22 @@ def inspect(ply_files, step, part_number, features_yaml, operator, ambient_temp_
 
             except Exception as e:
                 click.echo(f"    ERROR: {e}", err=True)
-                dbmod.insert_inspection_result(
+                result_id = dbmod.insert_inspection_result(
                     db, inspection_id=inspection_id, feature_id=fid,
                     raw_value=None, corrected_value=None,
                     expanded_uncertainty=None, deviation=None,
                     status="blocked",
-                    reason_code="BLOCKED_RECIPE_MISMATCH",
+                    reason_code="REVIEW_ONLY_ALIGNMENT_DEGRADED",
                     recommended_action=f"Measurement failed: {e}",
+                )
+                # H-2: Persist evidence even for blocked results (all zeros for u-components)
+                dbmod.insert_measurement_evidence(
+                    db, result_id=result_id,
+                    local_coverage=0.0, local_density=0.0,
+                    fit_residual=0.0, inlier_count=0, effective_sample_size=0,
+                    u_fit=0.0, u_repeat=0.0, u_reprod=0.0, u_align=0.0,
+                    u_cal=0.0, u_ref=0.0, u_temp=0.0, u_bias_est=0.0,
+                    u_combined=0.0, expanded_uncertainty=0.0,
                 )
                 results_statuses.append("blocked")
 
